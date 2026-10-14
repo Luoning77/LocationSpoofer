@@ -343,7 +343,7 @@ fun FooterLinks(isDark: Boolean) {
             modifier = Modifier
                 .clip(RoundedCornerShape(22.dp))
                 .background(if (isDark) Color(0xFF24292E) else Color(0xFF24292E))
-                .noRippleClickable { uriHandler.openUri("https://github.com/HuangZhuoRui/LocationSpoofer") }
+                .noRippleClickable { uriHandler.openUri("https://github.com/TaoCultivator/LocationSpoofer") }
                 .padding(horizontal = 16.dp, vertical = 9.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
