@@ -60,7 +60,8 @@
 2. **编写代码**，严格遵循 Kotlin / Jetpack Compose / MVVM 编码风格与架构规范。
 3. **本地编译验证**：
    ```bash
-   ./gradlew assembleDebug
+   ./gradlew :app:assembleScopedDebug
+   ./gradlew :app:assembleGlobalDebug
    ```
 4. **提交代码**，遵循标准 Commit 格式（详见 [Git 提交规范](#git-提交信息规范-commit-conventions)）。
 5. **推送到你的 Fork 仓库**，并在 GitHub 发起面向 `main` 分支的 Pull Request。
@@ -72,7 +73,7 @@
 
 ### 前置环境
 * **Android Studio**：Android Studio Hedgehog / Iguana / Jellyfish 或更新版本。
-* **JDK**：OpenJDK 17 或 OpenJDK 21。
+* **JDK**：Gradle daemon 使用 OpenJDK 21（由 `gradle/gradle-daemon-jvm.properties` 指定）；`core-geo` 编译与测试另外需要 OpenJDK 17 toolchain。Windows 可使用项目内 JDK 17，并由 Gradle 下载 daemon 所需的 JDK 21，详见 [Windows 本地开发](docs/development-windows.md)。
 * **Android SDK**：compileSdk `37`（minSdk `26`），Build Tools 版本由 AGP 自动匹配，无需手动指定。
 * **测试设备**：一台已 Root 并安装 **KernelSU / APatch / Magisk** 及 **LSPosed (API 101+)** 的实体测试机。
 
@@ -84,12 +85,16 @@ git clone https://github.com/your-username/LocationSpoofer.git
 # 进入目录
 cd LocationSpoofer
 
-# 编译 Debug APK
-./gradlew assembleDebug
+# 分次编译两种方案的 Debug APK
+./gradlew :app:assembleScopedDebug
+./gradlew :app:assembleGlobalDebug
 
-# 直接安装到已连接的设备
-./gradlew installDebug
+# 选择一种方案安装到已连接的设备
+./gradlew :app:installScopedDebug
+# 或 ./gradlew :app:installGlobalDebug
 ```
+
+Windows PowerShell 请使用 `./tools/gradle.ps1` 替代 `./gradlew`，入口会设置本次构建所需的 Java、SDK 和本地缓存路径。Debug 构建无需配置发布签名密钥。
 
 ---
 

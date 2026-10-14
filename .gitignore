@@ -44,3 +44,9 @@ app/scoped/
 
 # Custom Gradle Home
 .gradle_home/
+
+# Project-local Android/JDK development tools
+.tools/
+.android-sdk/
+.android/
+.signing/
