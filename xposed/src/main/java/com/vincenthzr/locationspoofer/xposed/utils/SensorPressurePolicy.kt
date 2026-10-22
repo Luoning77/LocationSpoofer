@@ -2,13 +2,15 @@ package com.vincenthzr.locationspoofer.xposed.utils
 
 import org.json.JSONObject
 import kotlin.math.PI
-import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.sin
 
 /**
  * 气压计伪造策略：按真实海拔正弦微扰生成气压读数。
  * 恢复自 v3.0.16 APK（build 303f46d）xposed/utils/SensorPressurePolicy.java
+ *
+ * 原版签名：apply(float[] values, long timestamp, JSONObject environment, long altitudeOffset, long now)
+ * 注意 altitudeOffset 与 now 均为 long，realisticAltitude 也接收 long（毫秒）。
  */
 object SensorPressurePolicy {
 
@@ -28,16 +30,17 @@ object SensorPressurePolicy {
         values: FloatArray,
         timestamp: Long,
         environment: JSONObject?,
-        altitudeOffset: Double,
+        altitudeOffset: Long,
         now: Long,
     ): Boolean {
         if (!enabled(environment) || values.isEmpty()) return false
+        val config = environment ?: return false
         val base = if (timestamp > 0) timestamp else now
         // 时间窗：base 距 now 不得超过 0.1s（未来）/1.5s（过去）
         if (!(base <= now + 100_000_000L && now - base <= 1_500_000_000L)) return false
         val altitude = RouteEngine.realisticAltitude(
-            environment,
-            (base - now) / 1_000_000.0 + altitudeOffset,
+            config,
+            (base - now) / 1_000_000L + altitudeOffset,
         ).coerceIn(-500.0, 10_000.0)
         val pressure = (1.0 - altitude / 44_330.0).pow(5.2550001983762575) * 1013.25
         val t = (base.coerceAtLeast(0) / 1.0e9) * 2.0 * PI

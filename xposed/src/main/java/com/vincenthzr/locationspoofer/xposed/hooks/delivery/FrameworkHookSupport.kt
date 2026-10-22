@@ -59,9 +59,9 @@ open class FrameworkHookSupport(
         synchronized(timers) { timers.add(timer) }
     }
 
-    /** 沿父类链查找字段并 setAccessible */
+    /** 沿父类链查找字段并 setAccessible（BLE 侧覆写为按 AOSP 字段名规则回退查找） */
     @Throws(NoSuchFieldException::class)
-    fun field(cls: Class<*>, name: String): Field {
+    open fun field(cls: Class<*>, name: String): Field {
         var current: Class<*>? = cls
         while (current != null) {
             try {
