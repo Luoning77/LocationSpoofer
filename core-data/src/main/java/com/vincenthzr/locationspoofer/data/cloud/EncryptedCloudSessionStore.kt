@@ -3,11 +3,13 @@ package com.vincenthzr.locationspoofer.data.cloud
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
+import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
 import java.io.File
 import java.io.IOException
 import java.security.InvalidKeyException
+import java.security.Key
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -42,7 +44,7 @@ import org.json.JSONObject
 class EncryptedCloudSessionStore(
     private val context: Context,
     name: String,
-    realm: String = PRODUCT_REALM,
+    private val realm: String = PRODUCT_REALM,
     private val companionStorage: Boolean = false,
 ) : CloudSessionStore {
 
@@ -65,7 +67,7 @@ class EncryptedCloudSessionStore(
     private val teePreferences = context.getSharedPreferences("cloud-tee-capability-v1", Context.MODE_PRIVATE)
 
     private val mapCache: EncryptedMapResourceCache by lazy {
-        EncryptedMapResourceCache(File(context.cacheDir, "cloud-map-v1-$originId")) { mapEncryptionKey() }
+        EncryptedMapResourceCache(File(context.cacheDir, "cloud-map-v1-$originId"), key = { mapEncryptionKey() })
     }
     private val mapPreview: CloudMapPreviewStore by lazy { CloudMapPreviewStore(mapCache, originId) }
 
@@ -393,7 +395,7 @@ class EncryptedCloudSessionStore(
             attempts++
             return keyReader(store(), alias)
         }
-        val lookup = confirmCloudKeyLookup { runCatching { load() }.getOrNull() }
+        val lookup = confirmCloudKeyLookup<Key> { runCatching { load() }.getOrNull() }
         if (lookup.attempts == 2 && lookup.key != null) {
             recordKeyEvent(
                 if (kind == "signing") "read_signing_key" else "read_session",
@@ -409,6 +411,10 @@ class EncryptedCloudSessionStore(
     }
 
     private fun keyReader(keyStore: KeyStore, alias: String): Key? = keyStore.getKey(alias, null)
+
+    /** 身份指纹提示：hex(sha256(realm + "\n" + 公钥 DER))，用于崩溃后人工比对密钥是否换过 */
+    private fun keyHint(encoded: ByteArray): String =
+        hex(MessageDigest.getInstance("SHA-256").digest(realm.toByteArray(Charsets.UTF_8) + "\n".toByteArray(Charsets.UTF_8) + encoded))
 
     private fun store(): KeyStore {
         val keyStore = KeyStore.getInstance("AndroidKeyStore")
@@ -517,6 +523,12 @@ class EncryptedCloudSessionStore(
             field?.invoke(e) as? Int
         }.getOrNull()
 
+    /** android.security.KeyStoreException 在 API 33+ 的布尔属性（反射读取，低版本返回 null） */
+    private fun keystoreExceptionFlag(e: Throwable, getter: String): Boolean? =
+        runCatching {
+            e.javaClass.methods.firstOrNull { it.name == getter }?.invoke(e) as? Boolean
+        }.getOrNull()
+
     // ---------- 设备身份操作 ----------
 
     override val deviceHint: String
@@ -621,16 +633,13 @@ class EncryptedCloudSessionStore(
             throw CloudException("device_locked")
         }
         try {
-            var metadata = identityMetadata()
-            if (metadata == null) {
-                try {
-                    metadata = loadIdentityMetadata()
-                } catch (e: CloudException) {
-                    val fallback = identityMetadata()
-                    if (e.code != "device_recovery_required" || fallback == null) throw e
-                    metadata = fallback
-                } ?: throw IllegalArgumentException("Required value was null.")
-            }
+            val metadata: JSONObject = identityMetadata() ?: try {
+                loadIdentityMetadata()
+            } catch (e: CloudException) {
+                val fallback = identityMetadata()
+                if (e.code != "device_recovery_required" || fallback == null) throw e
+                fallback
+            } ?: throw IllegalArgumentException("Required value was null.")
             val tee = metadata.optJSONObject("teeEnrollment")
             val reason: String = if (tee != null) {
                 val alias = tee.getString("alias")
@@ -960,8 +969,8 @@ class EncryptedCloudSessionStore(
             diagnosticQueue().record(
                 operation, "storage_unavailable", category, clientInfo(), variant(), abi(),
                 keystoreCode = keystoreCode,
-                transient = if (Build.VERSION.SDK_INT >= 33 && keystoreException != null) keystoreException.isTransientFailure else null,
-                requiresUnlock = if (Build.VERSION.SDK_INT >= 33 && keystoreException != null) keystoreException.isUserAuthenticationRequired else null,
+                transient = if (Build.VERSION.SDK_INT >= 33 && keystoreException != null) keystoreExceptionFlag(keystoreException, "getIsTransientFailure") else null,
+                requiresUnlock = if (Build.VERSION.SDK_INT >= 33 && keystoreException != null) keystoreExceptionFlag(keystoreException, "getRequiresUserAuthentication") else null,
                 osErrorCode = errno,
                 details = details,
             )

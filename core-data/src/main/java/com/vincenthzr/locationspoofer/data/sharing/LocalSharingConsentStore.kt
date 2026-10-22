@@ -1,5 +1,6 @@
 package com.vincenthzr.locationspoofer.data.sharing
 
+import android.content.Context
 import java.security.MessageDigest
 
 /**

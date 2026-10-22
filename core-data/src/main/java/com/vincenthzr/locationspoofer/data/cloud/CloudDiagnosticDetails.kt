@@ -148,9 +148,10 @@ data class CloudDiagnosticDetails(
             if (json.has(key)) json.getLong(key) else null
 
         /** 原版 fromJson：超限结构（causes>4 / frames>3）或校验失败返回 null */
+        /** 原版 fromJson：超限结构（causes>4 / frames>3）或校验失败返回 null */
         fun fromJson(json: JSONObject): CloudDiagnosticDetails? = try {
             val causesArray = json.getJSONArray("causes")
-            if (causesArray.length() > 4) return null
+            if (causesArray.length() > 4) throw InvalidStructure()
             val keyJson = json.optJSONObject("key")
             val diagnosticKey = keyJson?.let {
                 CloudDiagnosticKey(
@@ -168,7 +169,7 @@ data class CloudDiagnosticDetails(
             val causes = (0 until causesArray.length()).map { i ->
                 val causeJson = causesArray.getJSONObject(i)
                 val framesArray = causeJson.getJSONArray("frames")
-                if (framesArray.length() > 3) return null
+                if (framesArray.length() > 3) throw InvalidStructure()
                 CloudDiagnosticCause(
                     type = causeJson.getString("type"),
                     frames = (0 until framesArray.length()).map { j ->
@@ -201,9 +202,14 @@ data class CloudDiagnosticDetails(
                 keyFingerprint = fromJsonStr(json, "keyFingerprint"),
             )
             if (details.valid()) details else null
+        } catch (_: InvalidStructure) {
+            null
         } catch (_: Exception) {
             null
         }
+
+        /** 结构超限哨兵（causes>4 或 frames>3） */
+        private class InvalidStructure : Exception()
 
         /** 沿 cause 链捕获至多 4 层，每层保留至多 3 个有效自有帧 */
         fun captureCauses(th: Throwable): List<CloudDiagnosticCause> {
