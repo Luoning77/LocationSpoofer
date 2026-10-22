@@ -1,0 +1,18 @@
+package defpackage;
+
+import java.util.List;
+
+/* JADX INFO: compiled from: r8-map-id-573e8adb0601e8a83800a19792bdd10a14b3a6a20605354c2a924486fcacfec9 */
+/* JADX INFO: loaded from: /Users/luoning/Desktop/code/rea/extracted/classes.dex */
+public final class x53 {
+    public static final x53 b = new x53(uj0.e);
+    public final List a;
+
+    public x53(List list) {
+        this.a = list;
+    }
+
+    public final String toString() {
+        return p91.p("TextContextMenuData(components=", xg1.a(this.a, "\n\t", null, 56), ')');
+    }
+}

@@ -1,0 +1,50 @@
+package org.maplibre.android.annotations;
+
+import java.util.ArrayList;
+import java.util.List;
+import org.maplibre.android.geometry.LatLng;
+import org.maplibre.android.maps.g;
+
+/* JADX INFO: compiled from: r8-map-id-573e8adb0601e8a83800a19792bdd10a14b3a6a20605354c2a924486fcacfec9 */
+/* JADX INFO: loaded from: /Users/luoning/Desktop/code/rea/extracted/classes.dex */
+@Deprecated
+public final class Polygon extends BasePointCollection {
+    private int fillColor = -16777216;
+    private int strokeColor = -16777216;
+    private List<List<LatLng>> holes = new ArrayList();
+
+    @Override // org.maplibre.android.annotations.BasePointCollection
+    public final void e() {
+        g gVar = this.f;
+        if (gVar != null) {
+            gVar.n(this);
+        }
+    }
+
+    public final void f(List list) {
+        this.holes.add(list);
+        e();
+    }
+
+    public final int g() {
+        return this.fillColor;
+    }
+
+    public final ArrayList h() {
+        return new ArrayList(this.holes);
+    }
+
+    public final int i() {
+        return this.strokeColor;
+    }
+
+    public final void j(int i) {
+        this.fillColor = i;
+        e();
+    }
+
+    public final void k(int i) {
+        this.strokeColor = i;
+        e();
+    }
+}

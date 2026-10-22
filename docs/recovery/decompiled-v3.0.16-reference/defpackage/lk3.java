@@ -1,0 +1,14 @@
+package defpackage;
+
+import android.view.KeyboardShortcutGroup;
+import android.view.Menu;
+import android.view.Window;
+import java.util.List;
+
+/* JADX INFO: compiled from: r8-map-id-573e8adb0601e8a83800a19792bdd10a14b3a6a20605354c2a924486fcacfec9 */
+/* JADX INFO: loaded from: /Users/luoning/Desktop/code/rea/extracted/classes.dex */
+public abstract class lk3 {
+    public static void a(Window.Callback callback, List<KeyboardShortcutGroup> list, Menu menu, int i) {
+        callback.onProvideKeyboardShortcuts(list, menu, i);
+    }
+}
