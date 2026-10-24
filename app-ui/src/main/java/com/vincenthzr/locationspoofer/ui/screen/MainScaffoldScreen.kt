@@ -34,11 +34,8 @@ import com.vincenthzr.locationspoofer.ui.liquid.FloatingBottomBarItem
 import com.vincenthzr.locationspoofer.ui.screen.spoofing.SpoofingIntent
 import com.vincenthzr.locationspoofer.ui.theme.AccentBlue
 import com.vincenthzr.locationspoofer.viewmodel.MainViewModel
-import com.vincenthzr.locationspoofer.viewmodel.UpdateViewModel
-import com.vincenthzr.locationspoofer.viewmodel.getIgnoredVersion
 import com.vincenthzr.locationspoofer.viewmodel.handleSpoofingIntent
 import com.vincenthzr.locationspoofer.viewmodel.isDomesticEnvironment
-import com.vincenthzr.locationspoofer.viewmodel.setIgnoredVersion
 import org.koin.androidx.compose.koinViewModel
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
@@ -65,7 +62,6 @@ enum class MainSubScreen {
     CoordinateConfig,
     ScannerMap,
     ManageData,
-    Update,
     LanguageSettings,
     MapEngineSettings,
     SignatureAuth,
@@ -89,41 +85,8 @@ fun MainScaffoldScreen(
     var mapController by remember { mutableStateOf<AppMapController?>(null) }
     val currentSelectedTab by rememberUpdatedState(selectedTab)
     val isDark = isSystemInDarkTheme()
-    val updateViewModel: UpdateViewModel = koinViewModel()
 
     val backdrop = rememberLayerBackdrop()
-
-    val updateUiState by updateViewModel.uiState.collectAsState()
-    var hasAutoCheckedUpdates by remember { mutableStateOf(false) }
-    var showStartupUpdateDialog by remember { mutableStateOf(false) }
-    val targetReleases = remember(updateUiState.releases, uiState.checkBetaUpdates) {
-        if (uiState.checkBetaUpdates) updateUiState.releases else updateUiState.releases.filter { !it.isPrerelease }
-    }
-    val latestRelease = targetReleases.firstOrNull()
-
-    // 软件启动进入主界面时，立即在后台检索是否有新版本发布
-    LaunchedEffect(Unit) {
-        updateViewModel.fetchReleases()
-    }
-
-    // 检测到未被忽略的新版本时弹出启动更新提示框
-    LaunchedEffect(targetReleases, updateUiState.isLoading) {
-        if (!hasAutoCheckedUpdates && !updateUiState.isLoading && targetReleases.isNotEmpty()) {
-            if (latestRelease != null) {
-                val latestVersion = latestRelease.versionName
-                val currentVersion = BuildConfig.VERSION_NAME
-                val ignoredVersion = viewModel.getIgnoredVersion()
-                if (isNewerVersion(
-                        latestVersion,
-                        currentVersion
-                    ) && latestVersion != ignoredVersion
-                ) {
-                    showStartupUpdateDialog = true
-                }
-            }
-            hasAutoCheckedUpdates = true
-        }
-    }
 
     LaunchedEffect(currentSubScreen) {
         if (currentSubScreen != MainSubScreen.None) {
@@ -327,9 +290,7 @@ fun MainScaffoldScreen(
                         BottomTab.Info.ordinal -> com.vincenthzr.locationspoofer.ui.screen.tabs.InfoTab(
                             viewModel = viewModel,
                             uiState = uiState,
-                            updateUiState = updateUiState,
                             tabBarHeight = paddingValues.calculateBottomPadding(),
-                            onNavigateToUpdate = { currentSubScreen = MainSubScreen.Update },
                             onNavigateToLanguage = { currentSubScreen = MainSubScreen.LanguageSettings },
                             onNavigateToMapEngine = { currentSubScreen = MainSubScreen.MapEngineSettings },
                             onNavigateToSignatureAuth = { currentSubScreen = MainSubScreen.SignatureAuth },
@@ -381,13 +342,6 @@ fun MainScaffoldScreen(
                         uiState = uiState,
                         isDark = isDark,
                         onClose = { currentSubScreen = MainSubScreen.None }
-                    )
-
-                    MainSubScreen.Update -> UpdateScreen(
-                        updateViewModel = updateViewModel,
-                        viewModel = viewModel,
-                        isDark = isDark,
-                        onBack = { currentSubScreen = MainSubScreen.None }
                     )
 
                     MainSubScreen.LanguageSettings -> com.vincenthzr.locationspoofer.ui.screen.settings.LanguageSettingsScreen(
@@ -455,22 +409,6 @@ fun MainScaffoldScreen(
                     MainSubScreen.None -> Unit
                 }
             }
-        }
-
-        // 启动时若检测到新版本，弹出更新弹窗（支持忽略此版本、前往更新）
-        if (showStartupUpdateDialog && latestRelease != null) {
-            StartupUpdateDialog(
-                latestRelease = latestRelease,
-                onDismiss = { showStartupUpdateDialog = false },
-                onNavigateToUpdate = {
-                    showStartupUpdateDialog = false
-                    currentSubScreen = MainSubScreen.Update
-                },
-                onIgnore = { version ->
-                    viewModel.setIgnoredVersion(version)
-                    showStartupUpdateDialog = false
-                }
-            )
         }
     }
 }

@@ -16,7 +16,7 @@ android {
 
         // 库模块没有自己的 versionName，这里手动生成一个同名 BuildConfig 字段，
         // 和 :app 共用 gradle.properties 里的同一个版本号来源，
-        // 供 UpdateScreen/InfoTab/MainScaffoldScreen 里的 BuildConfig.VERSION_NAME 读取当前版本号
+        // 供 InfoTab/MainScaffoldScreen 里的 BuildConfig.VERSION_NAME 读取当前版本号
         buildConfigField(
             "String",
             "VERSION_NAME",

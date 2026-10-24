@@ -45,15 +45,12 @@ import com.vincenthzr.locationspoofer.progress.AdaptationProgressSource
 import com.vincenthzr.locationspoofer.vendor.VendorProfile
 import com.vincenthzr.locationspoofer.ui.screen.FooterLinks
 import com.vincenthzr.locationspoofer.ui.screen.LANGUAGES
-import com.vincenthzr.locationspoofer.ui.screen.UpdateCheckCard
-import com.vincenthzr.locationspoofer.ui.screen.isNewerVersion
 import com.vincenthzr.locationspoofer.ui.theme.AccentBlue
 import com.vincenthzr.locationspoofer.ui.theme.AccentGreen
 import com.vincenthzr.locationspoofer.ui.theme.AccentOrange
 import com.vincenthzr.locationspoofer.ui.theme.AppColors
 import com.vincenthzr.locationspoofer.ui.theme.noRippleClickable
 import com.vincenthzr.locationspoofer.viewmodel.MainViewModel
-import com.vincenthzr.locationspoofer.viewmodel.UpdateUiState
 import com.vincenthzr.locationspoofer.viewmodel.getSavedLanguage
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
 
@@ -61,9 +58,7 @@ import top.yukonga.miuix.kmp.basic.Card as MiuixCard
 fun InfoTab(
     viewModel: MainViewModel,
     uiState: AppState,
-    updateUiState: UpdateUiState? = null,
     tabBarHeight: Dp = 90.dp,
-    onNavigateToUpdate: () -> Unit = {},
     onNavigateToLanguage: () -> Unit = {},
     onNavigateToMapEngine: () -> Unit = {},
     onNavigateToSignatureAuth: () -> Unit = {},
@@ -74,16 +69,6 @@ fun InfoTab(
     onNavigateToEnvTokens: () -> Unit = {}
 ) {
     val isDark = isSystemInDarkTheme()
-
-    val currentVersion = BuildConfig.VERSION_NAME
-    val targetReleases = remember(updateUiState?.releases, uiState.checkBetaUpdates) {
-        val list = updateUiState?.releases ?: emptyList()
-        if (uiState.checkBetaUpdates) list else list.filter { !it.isPrerelease }
-    }
-    val latestRelease = targetReleases.firstOrNull()
-    val hasNewVersion = remember(targetReleases) {
-        latestRelease != null && isNewerVersion(latestRelease.versionName, currentVersion)
-    }
 
     // 获取当前生效的语言名称
     val defaultLangText = stringResource(R.string.default_language)
@@ -205,17 +190,7 @@ fun InfoTab(
                 }
             }
 
-            // 1. 软件更新卡片
-            item {
-                UpdateCheckCard(
-                    isDark = isDark,
-                    hasNewVersion = hasNewVersion,
-                    newVersionName = if (hasNewVersion) latestRelease?.versionName else null,
-                    onCheckClick = onNavigateToUpdate
-                )
-            }
-
-            // 2. 设置聚合卡片：原来的 6 个"软件配置"区块拆开后，各自独立成页，
+            // 设置聚合卡片：原来的 6 个"软件配置"区块拆开后，各自独立成页，
             // 这里收进一个紧凑列表，避免变成 6 个各自占一屏高度的大卡片。
             item {
                 MiuixCard(
