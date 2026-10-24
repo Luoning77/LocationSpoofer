@@ -22,6 +22,7 @@ object SystemClassLocator {
      * @param serviceNames ServiceManager 里的服务名，从已注册实例的 ClassLoader 里找
      * @param deepScan 是否扫描 LocalServices 与 ApplicationLoaders 里的全部 ClassLoader（开销较大，只给确实在 APEX 里的服务用）
      * @param apexJars 上面都找不到时，直接用这些 APEX jar 新建 ClassLoader 加载
+     * @param accept 候选类校验：返回 false 表示"类存在但不是我要的实现"，继续找下一个候选/下一层
      */
     fun locate(
         component: SystemComponent,
@@ -31,9 +32,12 @@ object SystemClassLocator {
         serviceNames: List<String> = emptyList(),
         deepScan: Boolean = false,
         apexJars: List<String> = emptyList(),
+        accept: (Class<*>) -> Boolean = { true },
     ): Class<*>? {
         val names = VendorRegistry.classCandidates(component)
-        fun find(cl: ClassLoader?): Class<*>? = names.firstNotNullOfOrNull { XposedHelpers.findClassIfExists(it, cl) }
+        fun find(cl: ClassLoader?): Class<*>? = names.firstNotNullOfOrNull {
+            XposedHelpers.findClassIfExists(it, cl)?.takeIf(accept)
+        }
         fun found(clazz: Class<*>, source: String): Class<*> {
             XposedBridge.log("[Vendor] $component -> ${clazz.name} (vendor=${VendorRegistry.active.id}, via $source)")
             HookStatus.classFound(component, clazz, source)

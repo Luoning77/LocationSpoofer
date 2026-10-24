@@ -159,6 +159,10 @@ class LocationHooker : XposedModule() {
 
     internal fun releaseReloadTimer(timer: java.util.Timer) { ownedReloadTimers.remove(timer) }
 
+    @Volatile internal var systemAccelHooker: SystemAccelHooker? = null
+    @Volatile internal var restoredNativeSensorApi: Class<*>? = null
+    @Volatile internal var sensorWorker: Thread? = null
+
     override fun onHotReloading(param: XposedModuleInterface.HotReloadingParam): Boolean {
         val loader = currentClassLoader ?: return false
         if (currentPackageName.isBlank()) return false
@@ -173,7 +177,8 @@ class LocationHooker : XposedModule() {
             ),
             "system_location" to saveSystemLocationReloadState(),
             "system_ble" to saveSystemBleReloadState(),
-            "sensor" to SensorStepHooker.saveReloadState()
+            "sensor" to SensorStepHooker.saveReloadState(),
+            "native_sensor_api" to (systemAccelHooker?.saveApi() ?: Void::class.java)
         ))
         retiringGeneration = true
         val worker = synchronized(pollingLock) {
@@ -183,7 +188,14 @@ class LocationHooker : XposedModule() {
             previous?.interrupt()
             previous
         }
+        val sensor = synchronized(pollingLock) {
+            val previous = sensorWorker
+            sensorWorker = null
+            previous?.interrupt()
+            previous
+        }
         worker?.join(2_000)
+        sensor?.join(2_000)
         if (worker?.isAlive == true) {
             retiringGeneration = false
             startConfigWorker()
@@ -192,6 +204,8 @@ class LocationHooker : XposedModule() {
         configReceiver?.close()
         configReceiver = null
         lastConfig = null
+        systemAccelHooker?.close()
+        systemAccelHooker = null
         synchronized(ownedReloadTimers) {
             ownedReloadTimers.forEach { it.cancel() }
             ownedReloadTimers.clear()
@@ -217,6 +231,10 @@ class LocationHooker : XposedModule() {
 
     override fun onHotReloaded(param: XposedModuleInterface.HotReloadedParam) {
         val state = param.savedInstanceState as? Map<*, *>
+        val nativeApi = state?.get("native_sensor_api") as? Class<*>
+        restoredNativeSensorApi = nativeApi?.takeIf {
+            it.name == "com.vincenthzr.locationspoofer.xposed.hooks.SystemAccelNative"
+        }
         reinstallAfterHotReload(
             state = state?.get("host"),
             // First upgrade from older versions has no saved state. Recover the already-running
@@ -510,6 +528,14 @@ class LocationHooker : XposedModule() {
         // 各厂商在 vendor/profiles/ 下按需覆写）。基线 Hook 已在上面装完，这里是纯追加，不影响任何机型。
         VendorRegistry.logSelectionOnce()
         deploy("installExtraHooks") { VendorRegistry.installExtraHooks(this, classLoader) }
+        if (isSystemServer) {
+            deploy("globalSensorAdapter") {
+                val hooker = SystemAccelHooker(this, restoredNativeSensorApi)
+                hooker.install()
+                systemAccelHooker = hooker
+                restoredNativeSensorApi = null
+            }
+        }
 
         val cfg = readConfig()
         android.util.Log.e(
@@ -650,6 +676,7 @@ class LocationHooker : XposedModule() {
 
     /** Motion delivery and service discovery need a timer independently of config reception. */
     private fun startConfigWorker() {
+        startSensorWorker()
         if (!isConfigWorkerStarted) {
             synchronized(pollingLock) {
                 if (!isConfigWorkerStarted) {
@@ -1069,6 +1096,44 @@ class LocationHooker : XposedModule() {
 
                 }
             }
+        }
+    }
+
+    private fun startSensorWorker() {
+        if (sensorWorker != null || retiringGeneration) return
+        synchronized(pollingLock) {
+            if (sensorWorker != null) return
+            val thread = Thread {
+                val self = Thread.currentThread()
+                while (sensorWorker === self && !self.isInterrupted) {
+                    try {
+                        val config = readConfig()
+                        systemAccelHooker?.update(config)
+                        val active = config?.optBoolean("active", false) == true
+                        val stepsEnabled = active && config != null &&
+                            config.optBoolean("enable_step_simulation", true) &&
+                            (SensorStepHooker.capturedListeners.isNotEmpty() || systemAccelHooker?.ready == true)
+                        val sleepMs = when {
+                            !active || config == null -> 1_000L
+                            config.optDouble("speed_m_s", 0.0) <= 0.05 -> 1_000L
+                            config.optBoolean("barometer_fluctuation", false) && systemAccelHooker?.ready == true -> 250L
+                            stepsEnabled -> 50L
+                            else -> 1_000L
+                        }
+                        Thread.sleep(sleepMs)
+                    } catch (_: InterruptedException) {
+                        return@Thread
+                    } catch (t: Throwable) {
+                        XposedBridge.log("SensorWorker: ${t.javaClass.simpleName}")
+                        try { Thread.sleep(1_000L) } catch (_: InterruptedException) { return@Thread }
+                    }
+                }
+            }.apply {
+                isDaemon = true
+                name = "LocationSpoofer_SensorWorker"
+            }
+            sensorWorker = thread
+            thread.start()
         }
     }
 

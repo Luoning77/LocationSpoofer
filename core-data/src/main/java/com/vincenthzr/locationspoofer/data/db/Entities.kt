@@ -36,7 +36,8 @@ data class LocationRecord(
     val selectedWifiBssid: String? = null,
     val selectedBluetoothAddress: String? = null,
     val selectedCellKey: String? = null,
-    val collectionRouteId: Long? = null
+    val collectionRouteId: Long? = null,
+    val syncId: String = ""
 )
 
 @Serializable
@@ -47,7 +48,8 @@ data class CollectionRouteRecord(
     val remark: String = "",
     val pointsJson: String = "[]",
     val halfWidthM: Double = 50.0,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val syncId: String = ""
 )
 
 @Serializable
@@ -245,7 +247,8 @@ data class SavedRouteEntity(
     val id: Long = 0,
     val name: String,
     val pointsJson: String = "[]",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val syncId: String = ""
 )
 
 /**

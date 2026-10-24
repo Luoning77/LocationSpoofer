@@ -286,7 +286,7 @@ object SensorStepHooker {
         calculateCurrentStepsFloat(config, now).toLong()
 
     /** 连续的累计步数：整数部分是步数，小数部分是当前这一步的相位，供加速度波形对齐 */
-    private fun calculateCurrentStepsFloat(config: JSONObject, now: Long): Double {
+    internal fun calculateCurrentStepsFloat(config: JSONObject, now: Long): Double {
         val startTime = config.optLong("start_timestamp", now)
         if (lastStepInitTime != startTime) {
             lastStepInitTime = startTime

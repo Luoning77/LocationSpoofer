@@ -80,11 +80,40 @@ object HookStatus {
     @Volatile private var configPath: String? = null
     @Volatile private var configModified = 0L
 
+    /** 框架投递适配器安装结果登记（FRAMEWORK_LOCATION / FRAMEWORK_BLE / FRAMEWORK_LOCATION_AVAILABILITY） */
+    private val capabilities = ConcurrentHashMap<String, Pair<Boolean, String>>()
+
+    /** native 传感器引擎就绪状态与来源（system_server 专用，NATIVE_SENSORS 行） */
+    @Volatile private var nativeSensorsReady: Boolean? = null
+    @Volatile private var nativeSensorsSource: String = ""
+
+    /** native 传感器运行时指标（diagnostics() 快照） */
+    @Volatile private var sensorRuntime: Map<String, String> = emptyMap()
+
     /** 当前配置来源与发布时刻，用于确认各系统进程是否收到了框架更新。 */
     fun configLoaded(path: String, modified: Long) {
         if (path == configPath && modified == configModified) return
         configPath = path
         configModified = modified
+        scheduleWrite()
+    }
+
+    /** 登记一个投递能力的安装结果（source 如 "runtime-signatures"） */
+    fun capability(name: String, found: Boolean, source: String) {
+        capabilities[name] = found to source
+        scheduleWrite()
+    }
+
+    /** 登记原生传感器引擎挂载结果 */
+    fun nativeSensors(ready: Boolean, source: String) {
+        nativeSensorsSource = source
+        nativeSensorsReady = ready
+        scheduleWrite()
+    }
+
+    /** 登记原生传感器运行时指标 */
+    fun nativeSensorRuntime(runtime: Map<String, String>) {
+        sensorRuntime = runtime.toMap()
         scheduleWrite()
     }
 
@@ -142,6 +171,28 @@ object HookStatus {
                 }
             })
         }
+        if (proc == SystemProcess.SYSTEM_SERVER && nativeSensorsReady != null) {
+            val ready = nativeSensorsReady == true
+            components.put(JSONObject().apply {
+                put("name", "NATIVE_SENSORS")
+                put("found", ready)
+                put("searched", true)
+                put("class", "native.SensorService.SensorEventConnection")
+                put("source", nativeSensorsSource)
+                put("methods", JSONObject().put("sendEvents", if (ready) 1 else 0))
+            })
+        }
+        for ((name, result) in capabilities.toSortedMap()) {
+            val (found, source) = result
+            components.put(JSONObject().apply {
+                put("name", name)
+                put("found", found)
+                put("searched", true)
+                put("class", name)
+                put("source", source)
+                put("methods", JSONObject().put("install", if (found) 1 else 0))
+            })
+        }
         return JSONObject().apply {
             put("format", FORMAT_VERSION)
             put("generation", generationId)
@@ -159,6 +210,9 @@ object HookStatus {
             put("model", profile.model)
             put("components", components)
             put("errors", JSONArray(synchronized(errors) { errors.toList() }))
+            if (proc == SystemProcess.SYSTEM_SERVER && sensorRuntime.isNotEmpty()) {
+                put("native_sensor_runtime", JSONObject(sensorRuntime))
+            }
         }
     }
 }

@@ -9,6 +9,15 @@ import com.vincenthzr.locationspoofer.utils.MotionRealism
 
 enum class WifiLoadStatus { IDLE, LOADING, DONE }
 
+/**
+ * 路线回放交通方式。
+ */
+enum class RouteTravelMode(@StringRes val labelResId: Int, val wireValue: String) {
+    WALKING(R.string.walking, "walking"),
+    CYCLING(R.string.cycling, "cycling"),
+    DRIVING(R.string.driving, "driving")
+}
+
 enum class SimMode(@StringRes val labelResId: Int, val speedMs: Double) {
     STILL(R.string.still, 0.0),
     WALKING(R.string.walking, 1.4),
