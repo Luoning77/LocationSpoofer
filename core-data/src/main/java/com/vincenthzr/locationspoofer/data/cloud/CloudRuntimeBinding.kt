@@ -7,6 +7,6 @@ package com.vincenthzr.locationspoofer.data.cloud
 data class CloudRuntimeBinding(
     val userId: String,
     val deviceId: String,
-    val sessionId: String,
     val publicKeyFingerprint: String,
+    val sessionId: String,
 )

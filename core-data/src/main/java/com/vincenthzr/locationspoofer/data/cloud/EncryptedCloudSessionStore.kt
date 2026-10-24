@@ -213,7 +213,7 @@ class EncryptedCloudSessionStore(
     private fun isAeadBadTag(e: Exception): Boolean =
         e is javax.crypto.AEADBadTagException || e.cause?.let { it is javax.crypto.AEADBadTagException } == true
 
-    override fun write(tokens: CloudTokens) {
+    override fun write(tokens: CloudTokens?) {
         if (tokens == null) {
             clearSession()
         } else {
@@ -799,7 +799,7 @@ class EncryptedCloudSessionStore(
 
     override fun mapResourceCache(): CloudMapResourceCache = mapCache
 
-    override fun saveMapPreviewBinding(binding: CloudRuntimeBinding) {
+    override fun saveMapPreviewBinding(binding: CloudRuntimeBinding?) {
         mapPreview.write(binding)
     }
 

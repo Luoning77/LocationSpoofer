@@ -29,7 +29,7 @@ class SelectableCloudSessionStore(
 
     override fun read(): CloudTokens? = selected().read()
 
-    override fun write(tokens: CloudTokens) = selected().write(tokens)
+    override fun write(tokens: CloudTokens?) = selected().write(tokens)
 
     override fun sign(payload: String): String = selected().sign(payload)
 
@@ -89,7 +89,7 @@ class SelectableCloudSessionStore(
     override fun recordDiagnostic(operation: String, code: String, httpStatus: Int?, detail: String?) =
         selected().recordDiagnostic(operation, code, httpStatus, detail)
 
-    override fun saveMapPreviewBinding(binding: CloudRuntimeBinding) =
+    override fun saveMapPreviewBinding(binding: CloudRuntimeBinding?) =
         selected().saveMapPreviewBinding(binding)
 
     override fun selectCompanionMode(enabledMode: Boolean) {

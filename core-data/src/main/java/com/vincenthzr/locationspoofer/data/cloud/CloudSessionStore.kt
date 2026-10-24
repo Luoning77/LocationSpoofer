@@ -15,7 +15,7 @@ interface CloudSessionStore {
 
     fun read(): CloudTokens?
 
-    fun write(tokens: CloudTokens)
+    fun write(tokens: CloudTokens?)
 
     fun sign(payload: String): String
 
@@ -105,7 +105,7 @@ interface CloudSessionStore {
 
     fun teeAvailability(): Boolean? = null
 
-    fun saveMapPreviewBinding(binding: CloudRuntimeBinding) {}
+    fun saveMapPreviewBinding(binding: CloudRuntimeBinding?) {}
 
     fun writeRuntimeRun(run: String?) {}
 }
