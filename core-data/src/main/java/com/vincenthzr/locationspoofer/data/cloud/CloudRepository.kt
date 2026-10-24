@@ -788,6 +788,16 @@ class CloudRepository(
         timeoutMillis: Long? = null,
         signer: (String) -> String = { sessionStore.sign(it) },
     ): JSONObject {
+        val stamp = generation.get()
+        currentCoroutineContext().ensureActive()
+        checkGeneration(stamp)
+        if (accessToken != null) {
+            try {
+                ensureSessionProof(readTokens() ?: throw CloudException("login_required"), stamp)
+            } catch (e: CloudException) {
+                if (e.code != "session_proof_expired") throw e
+            }
+        }
         val req = buildRequest(path, body, accessToken, query, method, deviceId, signer)
         return try {
             performRequest(req, timeoutMillis)
@@ -797,7 +807,7 @@ class CloudRepository(
         }
     }
 
-        suspend fun authenticatedJson(
+    suspend fun authenticatedJson(
         path: String,
         query: Map<String, String> = emptyMap(),
         body: JSONObject? = null,
@@ -842,21 +852,38 @@ class CloudRepository(
     }
 
         suspend fun authenticatedRead(path: String, query: Map<String, String>, stamp: Long): JSONObject {
+        checkGeneration(stamp)
         requireValidated(stamp)
-        val tokens = readTokens() ?: throw CloudException("login_required")
+        var tokens = readTokens() ?: throw CloudException("login_required")
+        if (tokens.accessExpiresAt == 0L || tokens.accessExpiresAt <= clock() + 30_000L) {
+            tokens = refreshTokens(tokens, stamp)
+        }
+        if (sessionStore.companionMode()) {
+            ensureCompanionLease(tokens, stamp)
+        }
         ensureSessionProof(tokens, stamp)
-        val req = buildRequest(
-            path = path,
-            body = null,
-            accessToken = tokens.accessToken,
-            query = query,
-            method = "GET",
-        )
         return try {
-            performRequest(req)
-        } catch (e: Exception) {
-            handleFailure(e, stamp, diagnosticOperation(path), false)
-            throw e
+            request(
+                path = path,
+                body = null,
+                accessToken = tokens.accessToken,
+                query = query,
+                method = "GET",
+            )
+        } catch (e: CloudException) {
+            if (e.code == "invalid_session") {
+                tokens = refreshTokens(tokens, stamp)
+                ensureSessionProof(tokens, stamp)
+                request(
+                    path = path,
+                    body = null,
+                    accessToken = tokens.accessToken,
+                    query = query,
+                    method = "GET",
+                )
+            } else {
+                throw e
+            }
         }
     }
 
@@ -867,21 +894,40 @@ class CloudRepository(
         method: String? = null,
         stamp: Long = generation.get(),
     ): JSONObject {
+        checkGeneration(stamp)
         requireValidated(stamp)
         var tokens = readTokens() ?: throw CloudException("login_required")
-        val now = clock()
-        if (tokens.accessExpiresAt in 1 until now) {
+        if (tokens.accessExpiresAt == 0L || tokens.accessExpiresAt <= clock() + 30_000L) {
             tokens = refreshTokens(tokens, stamp)
         }
+        if (sessionStore.companionMode()) {
+            ensureCompanionLease(tokens, stamp)
+        }
         ensureSessionProof(tokens, stamp)
-        val req = buildRequest(
-            path = path,
-            body = body,
-            accessToken = tokens.accessToken,
-            query = query,
-            method = method,
-        )
-        return performRequest(req)
+        val verb = method ?: if (body != null) "POST" else "GET"
+        return try {
+            request(
+                path = path,
+                body = body,
+                accessToken = tokens.accessToken,
+                query = query,
+                method = verb,
+            )
+        } catch (e: CloudException) {
+            if (e.code == "invalid_session" && verb == "GET") {
+                tokens = refreshTokens(tokens, stamp)
+                ensureSessionProof(tokens, stamp)
+                request(
+                    path = path,
+                    body = body,
+                    accessToken = tokens.accessToken,
+                    query = query,
+                    method = verb,
+                )
+            } else {
+                throw e
+            }
+        }
     }
 
     suspend fun ensureSessionProof(tokens: CloudTokens, stamp: Long) {
