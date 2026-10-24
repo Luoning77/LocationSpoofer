@@ -5,7 +5,6 @@ import com.vincenthzr.locationspoofer.xposed.diagnostics.HookStatus
 
 /**
  * 框架投递适配器装配：按进程类型安装定位投递 / 定位可用性 / BLE 投递三件适配器。
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/delivery/FrameworkAdapters.java
  */
 object FrameworkAdapters {
 

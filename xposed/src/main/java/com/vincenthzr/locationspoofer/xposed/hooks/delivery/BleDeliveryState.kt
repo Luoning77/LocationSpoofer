@@ -2,7 +2,6 @@ package com.vincenthzr.locationspoofer.xposed.hooks.delivery
 
 /**
  * BLE 广播投递状态：记录已见设备、产出新增/消失批次。
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/delivery/BleDeliveryState.java
  */
 class BleDeliveryState<T>(private var lastBatchAt: Long) {
 

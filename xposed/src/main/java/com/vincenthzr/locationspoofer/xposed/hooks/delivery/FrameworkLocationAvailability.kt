@@ -16,7 +16,6 @@ import java.util.TimerTask
 /**
  * 定位可用性伪造：定位总开关关闭时，让目标应用看到"定位可用/已启用"。
  *
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/delivery/FrameworkLocationAvailability.java。
  *
  * 覆盖四条判定链：
  * 1. LocationManagerService.isLocationEnabledForUser / isProviderEnabledForUser —— 用户级开关；

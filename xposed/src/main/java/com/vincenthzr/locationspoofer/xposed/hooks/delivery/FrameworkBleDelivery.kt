@@ -35,7 +35,6 @@ import java.util.function.Predicate
 /**
  * 蓝牙扫描投递：在蓝牙进程里把扫描结果整体替换成伪造的 BLE 设备列表。
  *
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/delivery/FrameworkBleDelivery.java（986 行）。
  *
  * 与定位投递同构：不拦请求入口，而是在 ScanManager 自己的 Handler 上按队列周期性重新投递。
  * 这样做的好处是完全复用系统的权限校验、回调类型分派、reportDelay 批处理逻辑——

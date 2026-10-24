@@ -7,7 +7,6 @@ import kotlin.math.sin
 
 /**
  * 气压计伪造策略：按真实海拔正弦微扰生成气压读数。
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/utils/SensorPressurePolicy.java
  *
  * 原版签名：apply(float[] values, long timestamp, JSONObject environment, long altitudeOffset, long now)
  * 注意 altitudeOffset 与 now 均为 long，realisticAltitude 也接收 long（毫秒）。

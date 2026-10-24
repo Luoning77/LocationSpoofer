@@ -8,7 +8,6 @@ import kotlin.math.min
 
 /**
  * 基站信息列表构造辅助：从环境点 JSON 读取小区参数并做回退计算。
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/network/CellInfoListBuilderKt.java
  * （buildFakeCellInfoList 主方法为 jadx bad-code，见③档语义恢复留档）
  */
 object CellInfoListBuilderKt {

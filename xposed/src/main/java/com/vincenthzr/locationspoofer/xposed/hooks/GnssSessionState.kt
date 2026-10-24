@@ -2,7 +2,6 @@ package com.vincenthzr.locationspoofer.xposed.hooks
 
 /**
  * GNSS 会话状态机：按 session id 记录"已启动/首个定位"去重。
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/GnssSessionState.java
  */
 class GnssSessionState {
     private var session: Long? = null

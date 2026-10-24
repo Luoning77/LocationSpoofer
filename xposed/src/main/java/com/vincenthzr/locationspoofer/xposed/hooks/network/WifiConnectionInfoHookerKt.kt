@@ -7,7 +7,6 @@ import org.json.JSONObject
 
 /**
  * WifiInfo 连接信息伪造：SSID/BSSID/MAC/RSSI/频率/链路速率/IP/网络 ID + SupplicantState。
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/network/WifiConnectionInfoHookerKt.java
  *
  * @param createWhenAbsent 拿不到系统 WifiInfo 实例时是否新建/构造（system_server 内 false）
  */

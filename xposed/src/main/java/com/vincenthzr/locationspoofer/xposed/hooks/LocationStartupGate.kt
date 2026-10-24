@@ -4,7 +4,6 @@ import java.util.WeakHashMap
 
 /**
  * 定位启动限流门：为每个注册对象记录截止时间，窗口内要求等待。
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/LocationStartupGate.java
  */
 class LocationStartupGate(private val periodNanos: Long) {
     private val deadlines: WeakHashMap<Any, Long>

@@ -2,7 +2,6 @@ package com.vincenthzr.locationspoofer.xposed.hooks
 
 /**
  * 卫星星历目录：32 颗固定卫星（GPS/Galileo/BeiDou/QZSS），按时间做微小漂移生成信号快照。
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/GnssSatelliteCatalog.java
  *
  * 用固定星历而不是随机值，是因为定位类应用会把卫星编号、仰角、方位角与真实天空对照，
  * 随机数据一眼假；固定星历至少保证"编号合法、仰角随天顶移动"。

@@ -16,7 +16,6 @@ import org.json.JSONObject
 
 /**
  * 框架投递 hook 的公共基座：句柄/定时器生命周期、反射工具、调用方识别、分节安装。
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/delivery/FrameworkHookSupport.java（282 行）
  */
 open class FrameworkHookSupport(
     val module: LocationHooker,

@@ -10,7 +10,6 @@ import org.json.JSONObject
 
 /**
  * ServiceState / SignalStrength / CellIdentity 构造辅助。
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/network/CellStateAndSignalBuilderKt.java
  * （constructCellIdentityByType 主方法为 jadx bad-code，见③档语义恢复留档）
  */
 object CellStateAndSignalBuilderKt {

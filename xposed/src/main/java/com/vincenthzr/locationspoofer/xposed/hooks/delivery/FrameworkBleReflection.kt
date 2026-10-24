@@ -7,7 +7,6 @@ import java.lang.reflect.Modifier
 /**
  * 蓝牙 scan binder 内部结构的反射定位器。
  *
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/delivery/FrameworkBleReflection.java（457 行）。
  *
  * AOSP 的 BluetoothScanBinder / GattService 在 Android 12～17 之间改过好几次名字与结构，
  * OEM 还会再改一遍。这里不硬编码任何成员名之外的假设：先按签名特征找到关键方法，

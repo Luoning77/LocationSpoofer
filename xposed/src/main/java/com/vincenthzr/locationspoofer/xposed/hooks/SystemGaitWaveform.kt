@@ -7,7 +7,6 @@ import kotlin.math.sin
 
 /**
  * 系统侧步态波形生成：由步频生成 192 点三轴加速度波形（x/y 摆动 + z 含重力）。
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/SystemGaitWaveform.java
  */
 object SystemGaitWaveform {
     private const val GRAVITY = 9.80665

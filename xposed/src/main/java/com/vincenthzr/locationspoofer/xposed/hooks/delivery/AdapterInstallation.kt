@@ -2,7 +2,6 @@ package com.vincenthzr.locationspoofer.xposed.hooks.delivery
 
 /**
  * 适配器安装助手：安装成功则把适配器加入资源集，失败则先 close 再回调错误。
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/delivery/AdapterInstallation.java（57 行）
  */
 object AdapterInstallation {
 

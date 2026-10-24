@@ -42,7 +42,7 @@ internal class StepSimulationClock(
             val elapsedSec = elapsedMs / 1000.0
             if (!auto) return cadence * elapsedSec / 60.0
             // 自动步频下步数不是简单的 步频×时间：步频本身随速度起伏和真实感等级摆动，
-            // 这里复用 core-geo 的 MotionRealism 会话（种子与 v3.0.16 完全一致），保证跨进程结果可复现。
+            // 这里复用 core-geo 的 MotionRealism 会话（固定种子），保证跨进程结果可复现。
             val session = MotionRealism.session(start, level, fluctuation)
             return session.steps(cadence.toDouble(), elapsedSec)
         }

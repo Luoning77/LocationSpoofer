@@ -6,7 +6,6 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 日志桥：Logcat 与 Xposed 模块日志双写，全部吞异常防炸进程。
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/utils/XposedBridge.java
  */
 object XposedBridge {
 

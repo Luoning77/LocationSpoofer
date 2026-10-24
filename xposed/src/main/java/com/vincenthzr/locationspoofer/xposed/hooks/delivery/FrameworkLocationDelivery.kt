@@ -33,7 +33,6 @@ import java.util.function.Predicate
 /**
  * 系统框架定位投递：在 system_server 里伪造 LocationProviderManager 的投递结果。
  *
- * 恢复自 v3.0.16 APK（build 303f46d）xposed/hooks/delivery/FrameworkLocationDelivery.java（1022 行）。
  *
  * 思路是**不改请求入口，只改结果出口**：
  * - 记录所有向 LocationProviderManager 注册过的 manager 实例（弱引用集合），定时驱动它们重新投递；
