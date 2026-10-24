@@ -13,10 +13,6 @@ import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 
-/**
- * 云请求分阶段计时：EventListener 采样 + 512 条环形缓冲。
- * 恢复自 v3.0.16 APK（build 303f46d）data/cloud/CloudRequestTiming.java
- */
 object CloudRequestTiming {
 
     data class Sample(
@@ -87,7 +83,6 @@ object CloudRequestTiming {
 
         override fun responseHeadersEnd(call: Call, response: Response) {
             record("$category.response", responseWait)
-            // 服务端 Server-Timing 头存在即读取（与原版一致，值仅触发读路径）
             response.header("Server-Timing")
         }
     }

@@ -1,13 +1,32 @@
 package com.vincenthzr.locationspoofer.data.update
 
-/**
- * 账号更新入口：云端路径常量。
- * 恢复自 v3.0.16 APK（build 303f46d）data/update/AccountUpdates.java
- *
- * 注：parse / parsePreference 依赖 SelfHostedUpdates.parseCatalog（尚未恢复），
- * 先落盘 CloudRepository 所需的两个路径常量；解析逻辑随 SelfHostedUpdates 一并恢复。
- */
+import com.vincenthzr.locationspoofer.data.cloud.CloudException
+import org.json.JSONObject
+
 object AccountUpdates {
     const val CHECK_PATH = "/v2/client/updates"
     const val PREFERENCE_PATH = "/v2/account/beta"
+
+    private fun <T> decode(block: () -> T): T = try {
+        block()
+    } catch (_: Exception) {
+        throw CloudException("invalid_response")
+    }
+
+    fun parse(json: JSONObject, scheme: String, abis: Set<String>): AccountUpdateCatalog = decode {
+        require(json.keys().asSequence().toSet() == setOf("schemaVersion", "betaEnabled", "catalog"))
+        require(json.get("schemaVersion") == 1)
+        val betaEnabled = json.get("betaEnabled") as Boolean
+        val catalog = SelfHostedUpdates.parseCatalog(json.getJSONObject("catalog"), scheme, abis)
+        if (!betaEnabled && catalog.any { it.isPrerelease }) {
+            error("Check failed.")
+        }
+        AccountUpdateCatalog(betaEnabled, catalog)
+    }
+
+    fun parsePreference(json: JSONObject): Boolean = decode {
+        require(json.keys().asSequence().toSet() == setOf("schemaVersion", "enabled"))
+        require(json.get("schemaVersion") == 1)
+        json.get("enabled") as Boolean
+    }
 }

@@ -2,10 +2,6 @@ package com.vincenthzr.locationspoofer.data.cloud
 
 import org.json.JSONObject
 
-/**
- * 地点详情 JSON 解析。
- * 恢复自 v3.0.16 APK（build 303f46d）data/cloud/CloudPlaceDetailsKt.java
- */
 fun parseCloudPlaceDetails(json: JSONObject): CloudPlaceDetails? {
     if (!json.has("details") || json.isNull("details")) return null
     try {

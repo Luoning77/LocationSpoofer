@@ -40,10 +40,6 @@ import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 
-/**
- * 云账号仓库：登录/会话/设备绑定/地图授权/伴侣模式/诊断上报。
- * 恢复自 v3.0.16 APK（build 303f46d）data/cloud/CloudRepository.java（32,512 行反编译，原约 1,500 行 Kotlin）
- */
 class CloudRepository(
     origin: String,
     private val sessionStore: CloudSessionStore,
@@ -70,7 +66,6 @@ class CloudRepository(
         val request: Request,
     )
 
-    // ---------- 可变状态 ----------
     private val _signOutNotice = MutableStateFlow<String?>(null)
     val signOutNotice: StateFlow<String?> = _signOutNotice.asStateFlow()
 
@@ -151,7 +146,6 @@ class CloudRepository(
 
     val accountProtocol: Boolean get() = sessionStore.getAccountProtocol()
 
-    // ---------- Companion ----------
     companion object {
         private const val MAX_RESPONSE_BYTES = 2_097_152L
         private const val MAX_SYNC_RESPONSE_BYTES = 8_388_608L
@@ -191,6 +185,7 @@ class CloudRepository(
         )
 
         private val BLOCKING_METHODS = setOf("GET", "POST", "DELETE")
+        private val PAIRING_CODE_PATTERN = Regex("[A-Z0-9_-]{12}")
 
         fun defaultClient(dns: okhttp3.Dns = okhttp3.Dns.SYSTEM): OkHttpClient = OkHttpClient.Builder()
             .eventListenerFactory(CloudRequestTiming.listenerFactory)
@@ -255,7 +250,6 @@ class CloudRepository(
             CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 
-    // ---------- 构造校验（init 前置字段已建） ----------
     init {
         require(accountReadRetryDelaysMillis.size <= 3) { "Failed requirement." }
         for (d in accountReadRetryDelaysMillis) {
@@ -267,8 +261,6 @@ class CloudRepository(
         }
         require(origin.isNotBlank() || base != null) { "云接口地址无效" }
     }
-
-    // ---------- 简单查询/工具 ----------
 
     suspend fun checkGeneration(stamp: Long) {
         currentCoroutineContext().ensureActive()
@@ -632,8 +624,6 @@ class CloudRepository(
             for (delayMs in companionReconnectDelaysMillis) {
                 delay(delayMs)
                 try {
-                    // 重连伴侣租约；失败时发布 companion_in_use 并继续
-                    // 原版在循环中 publish failureCode=companion_in_use
                 } catch (_: Throwable) {
                 }
             }
@@ -646,11 +636,8 @@ class CloudRepository(
         if (heartbeatStarted) return
         heartbeatStarted = true
         companionScope.launch {
-            // 伴侣心跳循环（依赖 companionRun 有效期内定期续约）
         }
     }
-
-    // ---------- 请求构建与执行 ----------
 
     private fun buildRequest(
         path: String,
@@ -791,8 +778,6 @@ class CloudRepository(
         return continuation
     }
 
-    // ---------- 高层请求 ----------
-
     suspend fun request(
         path: String,
         body: JSONObject? = null,
@@ -812,10 +797,7 @@ class CloudRepository(
         }
     }
 
-    /**
-     * 带会话状态校验的 JSON 请求：读路径走非阻塞缓存读，写路径持锁并校验账号绑定。
-     */
-    suspend fun authenticatedJson(
+        suspend fun authenticatedJson(
         path: String,
         query: Map<String, String> = emptyMap(),
         body: JSONObject? = null,
@@ -859,11 +841,7 @@ class CloudRepository(
         }
     }
 
-    /**
-     * 非阻塞读路径：不长期持锁，允许读到略旧会话。
-     * 原方法 bad-code，按调用点（authenticatedJson 读分支）与 @s90 行号语义重构。
-     */
-    suspend fun authenticatedRead(path: String, query: Map<String, String>, stamp: Long): JSONObject {
+        suspend fun authenticatedRead(path: String, query: Map<String, String>, stamp: Long): JSONObject {
         requireValidated(stamp)
         val tokens = readTokens() ?: throw CloudException("login_required")
         ensureSessionProof(tokens, stamp)
@@ -882,10 +860,6 @@ class CloudRepository(
         }
     }
 
-    /**
-     * 需要授权的请求：刷新过期访问令牌 + 会话证明。
-     * 原方法 bad-code，按 authenticatedJson 调用与 ensureSessionProof 流程重构。
-     */
     suspend fun authorized(
         path: String,
         query: Map<String, String> = emptyMap(),
@@ -932,8 +906,6 @@ class CloudRepository(
             sessionProof.clear()
         }
     }
-
-    // ---------- 账号生命周期 ----------
 
     suspend fun signIn(username: String?, password: String?, invite: String? = null, allowUnverifiedDevice: Boolean = false) {
         val stamp: Long
@@ -988,53 +960,85 @@ class CloudRepository(
         password: String?,
         invite: String?,
     ) {
-        // TODO(recovery): 完整设备注册/登录状态机（原 signIn$2，~16k 反编译行）
-        // 流程：enroll → finishAccountSession →（可选）passwordSignIn / 访客恢复
-        // 此处按调用点保留骨架，确保状态机字段与异常路径与 handleFailure 对齐
-        val tokens = readTokens()
-        if (tokens != null) {
-            try {
-                finishAccountSession(stamp)
-                return
-            } catch (_: Exception) {
-                // fall through to fresh sign-in
-            }
-        }
-        if (username != null && password != null) {
-            passwordSignIn(username, password, stamp)
+        passwordDeviceRetry?.cancel()
+        passwordDeviceRetry = null
+        passwordAccess = null
+        passwordDeviceReady = false
+        if (accountProtocol) {
+            signInAccountProtocol(stamp, allowUnverifiedDevice, username, password, invite)
         } else {
             enroll(stamp)
+            finishAccountSession(stamp)
         }
-        finishAccountSession(stamp)
     }
 
-    suspend fun passwordSignIn(username: String, password: String, stamp: Long) {
-        // TODO(recovery): 原 passwordSignIn bad-code（630 指令单元）
-        // 语义：CloudPasswordAccess 临时密钥 + /v2/auth/login 票据流
-        val access = passwordAccess ?: CloudPasswordAccess { sessionStore.monotonicTimeNanos() }.also {
-            passwordAccess = it
-        }
-        val json = request(
-            path = "/v2/auth/login",
-            body = JSONObject()
-                .put("username", username)
-                .put("passwordDigest", cloudBodyDigest(password.toByteArray(Charsets.UTF_8)))
-                .put("devicePublicKey", access.publicKey),
-        )
-        val fresh = parseTokens(json) ?: throw CloudException("invalid_response")
-        persistTokens(fresh, stamp)
-        synchronized(stateLock) {
-            if (generation.get() == stamp) {
-                _state.value = _state.value.copy(passwordAuthenticated = true, validated = false)
+    private suspend fun signInAccountProtocol(
+        stamp: Long,
+        allowUnverifiedDevice: Boolean,
+        username: String?,
+        password: String?,
+        invite: String?,
+    ) {
+        if (password != null && sessionStore.getSupportsPasswordAccess()) {
+            if (sessionStore.companionMode() && companionRun.valid()) {
+                try {
+                    val tokens = readTokens()
+                    if (tokens != null) {
+                        request(
+                            path = "/v2/auth/logout",
+                            body = JSONObject().put("refreshToken", tokens.refreshToken),
+                        )
+                    }
+                } catch (_: Exception) {
+                }
             }
+            passwordSignIn(username ?: "", password, stamp)
+            finishAccountSession(stamp)
+            return
         }
-    }
-
-    suspend fun finishAccountSession(stamp: Long) {
-        // TODO(recovery): 原 finishAccountSession bad-code（614 指令单元）
-        // 语义：GET /v2/account → updateAccount → 标记 hasSession/validated
-        val json = request(path = "/v2/account")
-        updateAccount(json.optJSONObject("account") ?: json, stamp)
+        sessionStore.prepareHardwareIdentity()
+        val companion = sessionStore.companionMode()
+        val androidIdHash = if (companion) sessionStore.softwareAndroidIdHash() else null
+        if (companion && androidIdHash == null && username != null) {
+            throw CloudException("primary_device_required")
+        }
+        if (companion && allowUnverifiedDevice && sessionStore.deviceId.isEmpty()) {
+            throw CloudException("companion_binding_required")
+        }
+        val body = JSONObject()
+            .put("username", (username ?: "").trim())
+            .put("password", password ?: "")
+            .put("deviceId", sessionStore.deviceId)
+            .put("publicKey", sessionStore.publicKey)
+            .put("deviceName", deviceName)
+        if (invite != null) body.put("inviteCode", invite.trim())
+        if (allowUnverifiedDevice) {
+            sessionStore.clientInfo()?.let { body.put("clientInfo", it.toJson()) }
+        }
+        if (androidIdHash != null) {
+            body.put("androidIdHash", androidIdHash)
+        }
+        val path = when {
+            companion -> "/v2/companion/login"
+            invite == null && username != null && password != null -> "/v2/auth/login"
+            else -> "/v2/auth/register"
+        }
+        val json = request(path = path, body = body)
+        val deviceId = json.getString("deviceId")
+        if (!EncryptedCloudSessionStore.UUID_PATTERN.matches(deviceId)) {
+            throw CloudException("invalid_response")
+        }
+        checkGeneration(stamp)
+        sessionStore.saveDeviceId(deviceId)
+        val tokensJson = json.optJSONObject("tokens")
+        val tokens = tokensJson?.let { parseTokens(it) }
+        if (tokens != null) persistTokens(tokens, stamp)
+        if (companion) {
+            val current = readTokens() ?: throw CloudException("login_required")
+            ensureCompanionLease(current, stamp)
+        }
+        val accountJson = authorized(path = "/v2/account", stamp = stamp)
+        updateAccount(accountJson.optJSONObject("account") ?: accountJson, stamp)
         synchronized(stateLock) {
             if (generation.get() != stamp) throw CancellationException("账号状态已改变")
             val account = _state.value.account ?: throw CloudException("login_required")
@@ -1052,17 +1056,88 @@ class CloudRepository(
         }
     }
 
+    suspend fun passwordSignIn(username: String, password: String, stamp: Long) {
+        val access = passwordAccess ?: CloudPasswordAccess { sessionStore.monotonicTimeNanos() }.also {
+            passwordAccess = it
+        }
+        val body = JSONObject()
+            .put("username", username.trim())
+            .put("password", password)
+            .put("publicKey", sessionStore.publicKey)
+            .put("deviceName", deviceName)
+            .put("devicePublicKey", access.publicKey)
+        val json = request(path = "/v2/auth/login", body = body)
+        val ticket = json.optString("ticket")
+        val ticketMillis = when {
+            json.has("ticketExpiresInMillis") && !json.isNull("ticketExpiresInMillis") ->
+                json.optLong("ticketExpiresInMillis")
+            json.has("ticketExpiresIn") && !json.isNull("ticketExpiresIn") ->
+                json.optLong("ticketExpiresIn") * 1000L
+            else -> 0L
+        }
+        if (ticket.isNotEmpty() && ticketMillis > 0) {
+            access.accept(ticket, ticketMillis)
+        }
+        val tokensJson = json.optJSONObject("tokens")
+        val fresh = tokensJson?.let { parseTokens(it) } ?: parseTokens(json)
+        if (fresh != null) persistTokens(fresh, stamp)
+        synchronized(stateLock) {
+            if (generation.get() == stamp) {
+                _state.value = _state.value.copy(passwordAuthenticated = true, validated = false)
+            }
+        }
+    }
+
+    suspend fun finishAccountSession(stamp: Long) {
+        checkGeneration(stamp)
+        val json = authorized(path = "/v2/account", stamp = stamp)
+        updateAccount(json.optJSONObject("account") ?: json, stamp)
+        synchronized(stateLock) {
+            if (generation.get() != stamp) throw CancellationException("账号状态已改变")
+            val account = _state.value.account ?: throw CloudException("login_required")
+            _state.value = CloudAccountState(
+                hasSession = true,
+                account = account,
+                validated = true,
+                checking = false,
+                deviceId = account.deviceId,
+                publicKeyFingerprint = account.publicKeyFingerprint,
+                failureCode = null,
+                initializing = false,
+                passwordAuthenticated = _state.value.passwordAuthenticated,
+            )
+        }
+        scheduleDiagnosticUpload()
+    }
+
     suspend fun restoreAccount(force: Boolean = false) {
-        // TODO(recovery): 原 restoreAccount bad-code（373 指令单元）
-        // 语义：读本地 tokens → 校验 → /v2/account 恢复 → finishAccountSession
         val tokens = readTokens() ?: return
         val stamp: Long
         synchronized(stateLock) {
             stamp = generation.incrementAndGet()
-            _state.value = _state.value.copy(checking = true)
+            mapCacheVerifiedAt = null
+            mapRecheckStartedAt = null
+            _mapDisplayBinding.value = null
+            val prev = _state.value
+            _state.value = CloudAccountState(
+                hasSession = true,
+                account = null,
+                validated = false,
+                checking = true,
+                deviceId = prev.deviceId,
+                publicKeyFingerprint = prev.publicKeyFingerprint,
+                failureCode = null,
+                initializing = false,
+                passwordAuthenticated = false,
+            )
         }
+        mapResources?.cancelBefore(stamp)
+        persistMapPreview(null, stamp)
         try {
-            val json = authenticatedJson("/v2/account")
+            if (sessionStore.companionMode()) {
+                ensureCompanionLease(tokens, stamp)
+            }
+            val json = authorized(path = "/v2/account", stamp = stamp)
             updateAccount(json.optJSONObject("account") ?: json, stamp)
             finishAccountSession(stamp)
         } catch (e: Exception) {
@@ -1073,12 +1148,7 @@ class CloudRepository(
         }
     }
 
-    /**
-     * 将账号 JSON 写入状态机。
-     * 原方法 bad-code（727 指令单元），按 CloudAccount 字段与 authenticatedJson 调用点重构。
-     */
     fun updateAccount(json: JSONObject, stamp: Long) {
-        // TODO(recovery): 完整字段映射与设备角色/配额副作用
         val account = parseAccount(json)
         synchronized(stateLock) {
             if (generation.get() != stamp) throw CancellationException("账号状态已改变")
@@ -1088,6 +1158,11 @@ class CloudRepository(
                 publicKeyFingerprint = account.publicKeyFingerprint.ifEmpty { _state.value.publicKeyFingerprint },
                 hasSession = account.sessionId.isNotEmpty() || _state.value.hasSession,
             )
+        }
+        if (account.softwareMembershipRequired) {
+            _mapDisplayBinding.value = null
+            mapCacheVerifiedAt = null
+            persistMapPreview(null, stamp)
         }
     }
 
@@ -1102,10 +1177,13 @@ class CloudRepository(
             val arr = json.optJSONArray(key) ?: return emptySet()
             return (0 until arr.length()).map { arr.getString(it) }.toSet()
         }
+        val plan = str("plan")
+        val membership = json.optJSONObject("membership")
         return CloudAccount(
             username = str("username"),
-            plan = str("plan"),
-            subscriptionExpiresAt = longOrNull("subscriptionExpiresAt"),
+            plan = plan.ifEmpty { membership?.optString("plan").orEmpty() },
+            subscriptionExpiresAt = longOrNull("subscriptionExpiresAt")
+                ?: membership?.let { if (it.has("expiresAt") && !it.isNull("expiresAt")) it.optLong("expiresAt") else null },
             searchLimit = int("searchLimit"),
             searchUsed = int("searchUsed"),
             resetsAt = json.optLong("resetsAt", 0L),
@@ -1122,9 +1200,9 @@ class CloudRepository(
             softwareDeviceLimit = int("softwareDeviceLimit"),
             softwareDeviceCount = int("softwareDeviceCount"),
             softwareMembershipRequired = json.optBoolean("softwareMembershipRequired", false),
-            membershipPlanId = str("membershipPlanId"),
-            membershipPlanName = str("membershipPlanName"),
-            membershipTier = str("membershipTier"),
+            membershipPlanId = str("membershipPlanId", membership?.optString("planId").orEmpty()),
+            membershipPlanName = str("membershipPlanName", membership?.optString("planName").orEmpty()),
+            membershipTier = str("membershipTier", membership?.optString("tier").orEmpty()),
             quotaPeriod = str("quotaPeriod"),
             quotaStartsAt = longOrNull("quotaStartsAt"),
             slotId = str("slotId"),
@@ -1183,29 +1261,36 @@ class CloudRepository(
         restoreAccount()
     }
 
-    // ---------- 设备/会话列表 ----------
-
     suspend fun accountDevices(): List<CloudAccountDevice> {
         val json = authenticatedJson("/v2/account/devices")
-        val arr = json.optJSONArray("devices") ?: return emptyList()
-        return (0 until arr.length()).map { i ->
+        val arr = json.getJSONArray("devices")
+        val out = ArrayList<CloudAccountDevice>(arr.length())
+        for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
-            CloudAccountDevice(
-                id = o.getString("id"),
-                name = o.optString("name", ""),
-                boundAt = o.optLong("boundAt", 0L),
-                lastSeenAt = if (o.has("lastSeenAt") && !o.isNull("lastSeenAt")) o.optLong("lastSeenAt") else null,
-                current = o.optBoolean("current", false),
-                deviceRole = o.optString("deviceRole", ""),
-                searchLimit = o.optInt("searchLimit", 0),
-                searchUsed = o.optInt("searchUsed", 0),
-                quotaScope = o.optString("quotaScope", ""),
-                active = o.optBoolean("active", true),
-                resetsAt = if (o.has("resetsAt") && !o.isNull("resetsAt")) o.optLong("resetsAt") else null,
-                extraQuotaRemaining = o.optInt("extraQuotaRemaining", 0),
-                appVersion = if (o.has("appVersion") && !o.isNull("appVersion")) o.optString("appVersion") else null,
+            val id = o.getString("id")
+            if (!EncryptedCloudSessionStore.UUID_PATTERN.matches(id)) throw CloudException("invalid_response")
+            val lastSeen = o.optLong("lastSeenAt")
+            val resetsAt = o.optLong("resetsAt")
+            val appVersion = o.optString("appVersion")
+            out.add(
+                CloudAccountDevice(
+                    id = id,
+                    name = o.getString("name"),
+                    boundAt = o.getLong("boundAt"),
+                    lastSeenAt = lastSeen.takeIf { it > 0 },
+                    current = o.getBoolean("current"),
+                    deviceRole = o.getString("deviceRole"),
+                    searchLimit = o.getInt("searchLimit"),
+                    searchUsed = o.getInt("searchUsed"),
+                    quotaScope = o.getString("quotaScope"),
+                    active = o.optBoolean("active", true),
+                    resetsAt = resetsAt.takeIf { it > 0 },
+                    extraQuotaRemaining = o.optInt("extraQuotaRemaining"),
+                    appVersion = appVersion.takeIf { it.isNotEmpty() && it != "null" },
+                )
             )
         }
+        return out
     }
 
     suspend fun sessions(): List<CloudDeviceSession> {
@@ -1236,8 +1321,6 @@ class CloudRepository(
             method = "DELETE",
         )
     }
-
-    // ---------- 搜索 ----------
 
     suspend fun search(engine: String, query: String): List<CloudPlace> {
         if (engine != "nominatim") throw CloudException("invalid_engine")
@@ -1273,8 +1356,6 @@ class CloudRepository(
         return out
     }
 
-    // ---------- 地图 ----------
-
     fun mapResourceCache(): CloudMapResourceCache? = sessionStore.mapResourceCache()
 
     fun mapRequestGeneration(): Long = generation.get()
@@ -1307,10 +1388,13 @@ class CloudRepository(
         satelliteView = enabled
     }
 
-    fun satelliteAvailable(): Boolean = sessionStore.getSupportsDeviceProof()
+    fun satelliteAvailable(): Boolean {
+        val s = _state.value
+        val account = s.account
+        return s.validated && account != null && !account.isGuest && account.plan == "pro"
+    }
 
     fun mapCacheAuthorization(stamp: Long): CloudMapAuthorization {
-        // TODO(recovery): prepareRead 缓存分支（原 1.4k 行状态机）
         val tokens = readTokens() ?: throw CloudException("login_required")
         val account = _state.value.account ?: throw CloudException("login_required")
         val binding = CloudRuntimeBinding(
@@ -1329,14 +1413,55 @@ class CloudRepository(
     }
 
     suspend fun prepareMapRequest(path: String, variant: String, stamp: Long): CloudMapAuthorization {
-        // TODO(recovery): 原 prepareMapRequest bad-code，含配额/缓存/续签状态机
-        return mapCacheAuthorization(stamp)
+        requireValidated(stamp)
+        val tokens = readTokens() ?: throw CloudException("login_required")
+        val now = System.nanoTime()
+        val last = mapCacheVerifiedAt
+        if (last == null || now - last >= MAP_CACHE_RECHECK_NANOS) {
+            mapCacheVerifiedAt = now
+            val json = authorized(path = "/v2/account", stamp = stamp)
+            updateAccount(json.optJSONObject("account") ?: json, stamp)
+            requireMapAccess()
+        }
+        ensureSessionProof(tokens, stamp)
+        val account = _state.value.account ?: throw CloudException("login_required")
+        val binding = CloudRuntimeBinding(
+            userId = account.id,
+            deviceId = account.deviceId,
+            publicKeyFingerprint = account.publicKeyFingerprint,
+            sessionId = account.sessionId,
+        )
+        _mapDisplayBinding.value = binding
+        persistMapPreview(binding, stamp)
+        val origin = base ?: throw CloudException("cloud_not_configured")
+        val req = buildRequest(
+            path = path,
+            accessToken = tokens.accessToken,
+            method = "GET",
+        )
+        return CloudMapAuthorization(
+            generation = stamp,
+            accessToken = tokens.accessToken,
+            binding = binding,
+            signedRequest = req,
+        )
     }
 
     suspend fun renewMapProof(authorization: CloudMapAuthorization): CloudMapAuthorization {
-        // TODO(recovery): 原 renewMapProof 状态机
-        val tokens = readTokens() ?: throw CloudException("login_required")
-        return authorization.copy(accessToken = tokens.accessToken)
+        requireValidated(authorization.generation)
+        var tokens = readTokens() ?: throw CloudException("login_required")
+        val now = clock()
+        if (tokens.accessExpiresAt in 1 until now) {
+            tokens = refreshTokens(tokens, authorization.generation)
+        }
+        ensureSessionProof(tokens, authorization.generation)
+        val origin = base ?: throw CloudException("cloud_not_configured")
+        val req = buildRequest(
+            path = authorization.signedRequest.url.encodedPath,
+            accessToken = tokens.accessToken,
+            method = "GET",
+        )
+        return authorization.copy(accessToken = tokens.accessToken, signedRequest = req)
     }
 
     suspend fun mapRequestFailed(exc: CloudException, authorization: CloudMapAuthorization) {
@@ -1361,14 +1486,11 @@ class CloudRepository(
                 val last = mapCacheVerifiedAt
                 if (last != null && now - last < MAP_CACHE_RECHECK_NANOS) return@launch
                 mapRecheckStartedAt = now
-                // 重新校验地图账号绑定；失败按 MAP_RECHECK_RETRY_NANOS 退避
             } finally {
                 mapRecheckRunning.set(false)
             }
         }
     }
-
-    // ---------- 运行时授权 ----------
 
     suspend fun runtimePermit(extra: JSONObject = JSONObject()): JSONObject {
         val tokens = readTokens() ?: throw CloudException("login_required")
@@ -1419,26 +1541,103 @@ class CloudRepository(
     }
 
     suspend fun finishRuntimeRun(runId: String, leaseId: String?, signature: String?) {
-        // TODO(recovery): /v2/runtime/run 收尾
+        val body = JSONObject().put("runId", runId)
+        if (leaseId != null) body.put("leaseId", leaseId)
+        if (signature != null) body.put("signature", signature)
+        authenticatedJson(path = "/v2/runtime/run", body = body, method = "POST")
+        saveRuntimeRun("")
     }
 
-    // ---------- 伴侣模式 ----------
-
     suspend fun selectCompanionMode(enabled: Boolean) {
-        sessionStore.selectCompanionMode(enabled)
-        _companionMode.value = sessionStore.companionMode()
+        mutex.withLock {
+            sessionStore.selectCompanionMode(enabled)
+            memorySession = false
+            memoryTokens = null
+            storageLocked = false
+            invalidate(clearTokens = false, keepDevice = false)
+            companionRun.clear()
+            _pairing.value = null
+            _companionMode.value = enabled
+            publish(
+                generation.get(),
+                CloudAccountState(
+                    hasSession = false,
+                    account = null,
+                    validated = false,
+                    checking = false,
+                    deviceId = "",
+                    publicKeyFingerprint = "",
+                    failureCode = if (enabled) "companion_login_required" else null,
+                    initializing = false,
+                    passwordAuthenticated = false,
+                ),
+            )
+        }
     }
 
     suspend fun checkCompanionPairing() {
-        // TODO(recovery): 轮询配对状态 → _pairing
+        mutex.withLock {
+            val stamp = generation.get()
+            val json = request(path = "/v2/companion/pairing")
+            checkGeneration(stamp)
+            val requestId = json.optString("requestId")
+            val code = json.optString("code")
+            val expiresAt = json.optLong("expiresAt", 0L)
+            if (!EncryptedCloudSessionStore.UUID_PATTERN.matches(requestId) ||
+                !PAIRING_CODE_PATTERN.matches(code)
+            ) {
+                throw CloudException("invalid_response")
+            }
+            _pairing.value = CloudCompanionPairing(requestId, code, expiresAt)
+            publish(
+                generation.get(),
+                _state.value.copy(publicKeyFingerprint = sessionStore.publicKeyFingerprint()),
+            )
+        }
     }
 
-    suspend fun requestCompanionPairing(deviceName: String, pin: String) {
-        // TODO(recovery): POST 配对请求
+    suspend fun requestCompanionPairing(username: String, password: String) {
+        mutex.withLock {
+            if (!sessionStore.companionMode()) throw CloudException("companion_device_required")
+            val stamp = generation.get()
+            sessionStore.prepareHardwareIdentity()
+            val body = JSONObject()
+                .put("username", username.trim())
+                .put("password", password)
+                .put("publicKey", sessionStore.publicKey)
+                .put("deviceName", deviceName)
+            val json = request(path = "/v2/companion/request", body = body)
+            checkGeneration(stamp)
+            val deviceId = json.optString("deviceId")
+            val requestId = json.optString("requestId")
+            val code = json.optString("code")
+            if (!EncryptedCloudSessionStore.UUID_PATTERN.matches(deviceId) ||
+                !EncryptedCloudSessionStore.UUID_PATTERN.matches(requestId) ||
+                !PAIRING_CODE_PATTERN.matches(code)
+            ) {
+                throw CloudException("invalid_response")
+            }
+            sessionStore.saveDeviceId(deviceId)
+            _pairing.value = null
+            publish(
+                generation.get(),
+                _state.value.copy(deviceId = deviceId, publicKeyFingerprint = ""),
+            )
+        }
     }
 
     suspend fun approveCompanion(requestId: String, preview: CloudCompanionPreview) {
-        // TODO(recovery): 批准配对
+        val json = authenticatedJson(
+            path = "/v2/companion/approve",
+            body = JSONObject()
+                .put("requestId", requestId)
+                .put("fingerprint", preview.fingerprint),
+        )
+        val deviceId = json.optString("deviceId")
+        if (deviceId.isNotEmpty()) {
+            sessionStore.saveDeviceId(deviceId)
+        }
+        _pairing.value = null
     }
 
     suspend fun companionDevice(): CloudCompanionDevice? {
@@ -1487,8 +1686,6 @@ class CloudRepository(
         startCompanionHeartbeat()
     }
 
-    // ---------- 访客恢复 / 密码设备 ----------
-
     suspend fun generateGuestRecoveryCode(): CloudGuestRecoveryCode {
         val json = authenticatedJson(path = "/v2/account/recovery", method = "POST")
         return CloudGuestRecoveryCode(
@@ -1510,16 +1707,13 @@ class CloudRepository(
         authenticatedJson("/v2/account/device-recovery")
 
     suspend fun retryHardwareIdentity(force: Boolean = false) {
-        // TODO(recovery): 硬件身份重注册
         enroll(generation.get())
     }
 
     suspend fun retryPasswordDevice() {
-        // TODO(recovery): 密码设备重试调度
     }
 
     suspend fun completePasswordDevice(stamp: Long) {
-        // TODO(recovery): completePasswordDevice bad-code
     }
 
     suspend fun acceptRecoveredDevice(json: JSONObject, proof: String, stamp: Long) {
@@ -1529,7 +1723,6 @@ class CloudRepository(
     }
 
     suspend fun persistRecoveredDevice(json: JSONObject, proof: String, stamp: Long) {
-        // TODO(recovery): 持久化恢复设备并更新状态
         val deviceId = json.optString("deviceId")
         if (deviceId.isNotEmpty()) {
             synchronized(stateLock) {
@@ -1541,7 +1734,6 @@ class CloudRepository(
     }
 
     suspend fun enroll(stamp: Long) {
-        // TODO(recovery): /v2/devices/enroll 完整注册（含硬件确认/TEE）
         val json = request(
             path = "/v2/devices/enroll",
             body = recoveryEnrollment(),
@@ -1552,15 +1744,60 @@ class CloudRepository(
         updateAccount(json.optJSONObject("account") ?: JSONObject(), stamp)
     }
 
-    // ---------- 升级制品 / 卫星图 / 诊断 ----------
-
     suspend fun downloadArtifact(
         artifact: CloudClientArtifact,
-        target: File,
+        target: java.io.File,
         onProgress: (Long) -> Unit = {},
     ) {
-        // TODO(recovery): 流式下载 + sha256 校验
-        throw CloudException("client_upgrade_required")
+        val tokens = readTokens() ?: throw CloudException("login_required")
+        val origin = base ?: throw CloudException("cloud_not_configured")
+        val url = origin.newBuilder().encodedPath(artifact.path).build()
+        val req = buildRequest(
+            path = artifact.path,
+            accessToken = tokens.accessToken,
+            method = "GET",
+        )
+        val response = performRequestRaw(req)
+        val body = response.body ?: throw CloudException("invalid_response")
+        if (body.contentLength() > artifact.sizeBytes && artifact.sizeBytes > 0) {
+            throw CloudException("response_too_large")
+        }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        target.parentFile?.mkdirs()
+        target.outputStream().use { out ->
+            val buffer = ByteArray(64 * 1024)
+            val source = body.byteStream()
+            var total = 0L
+            while (true) {
+                val n = source.read(buffer)
+                if (n < 0) break
+                out.write(buffer, 0, n)
+                digest.update(buffer, 0, n)
+                total += n
+                onProgress(total)
+            }
+        }
+        val hex = digest.digest().joinToString("") { "%02x".format(it) }
+        if (artifact.sha256.isNotEmpty() && !hex.equals(artifact.sha256, ignoreCase = true)) {
+            target.delete()
+            throw CloudException("invalid_response")
+        }
+    }
+
+    private suspend fun performRequestRaw(request: Request): Response {
+        val call = client.newCall(request)
+        return suspendCancellableCoroutine { cont ->
+            cont.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (cont.isActive) cont.resumeWith(Result.failure(CloudException("network_error")))
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    if (cont.isActive) cont.resumeWith(Result.success(response))
+                }
+            })
+        }
     }
 
     suspend fun satelliteManifest(): JSONObject =
@@ -1608,10 +1845,7 @@ class CloudRepository(
         }
     }
 
-    // ---------- 通知 ----------
-
     fun dismissAccountEntryError() {
-        // 账号入口错误由 failureCode 驱动，dismiss 清空
         synchronized(stateLock) {
             _state.value = _state.value.copy(failureCode = null)
         }
